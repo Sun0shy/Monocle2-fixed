@@ -29,7 +29,7 @@ install.packages("igraph_1.2.11.tar.gz", repos = NULL, type = "source")
 
 ## 2 Install Monocle2-fixed
 
-Download the patched source and install:
+Download the patched source and install （Linux Terminal）:
 
 ```bash
 unzip monocle-release-master-fixed.zip
