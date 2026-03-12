@@ -1,0 +1,283 @@
+Monocle2 Compatibility Patch (R4.3 Environment)
+===============================================
+
+概述
+--------
+
+This repository contains a patched version of Monocle2 (v2.9.0) that enables
+stable execution under modern R environments. The original Monocle2 codebase
+was written around 2016–2017 and assumes older versions of several core
+packages such as Matrix, dplyr, igraph, and BiocGenerics.
+
+In modern environments (e.g., R ≥ 4.0), multiple API changes lead to runtime
+errors such as:
+
+    Error: the condition has length > 1
+    could not find function "clusterApply"
+    unused argument (neimode = ...)
+    group_by_ is deprecated
+
+This patch resolves compatibility issues required for running Monocle2 under:
+
+    R 4.3
+    dplyr 1.1+
+    Matrix 1.5+
+    Bioconductor 3.18
+
+Note that Monocle2 is NOT fully compatible with newer igraph APIs.
+For maximum stability, igraph 1.2.11 is recommended.
+
+
+Root Cause
+----------
+
+Most compatibility issues arise from major API changes in several core R
+packages:
+
+1. Matrix ≥ 1.5 changed sparse matrix class hierarchies.
+2. dplyr ≥ 1.0 removed scoped functions such as group_by_() and select_().
+3. BiocGenerics removed several parallel helper functions.
+4. igraph ≥ 1.3 modified traversal APIs used by Monocle2.
+
+
+Compatibility Fixes
+-------------------
+
+1. dplyr deprecated function: group_by_()
+
+Original code:
+
+    dplyr::group_by_(
+        dplyr::select_(rownames_to_column(pData(cds)), "rowname", .dots=model_terms),
+        .dots=model_terms
+    )
+
+Updated code:
+
+    rownames_to_column(pData(cds)) %>%
+        dplyr::select(rowname, dplyr::all_of(model_terms)) %>%
+        dplyr::group_by(dplyr::across(dplyr::all_of(model_terms)))
+
+
+2. dplyr deprecated function: select_()
+
+Original code:
+
+    dplyr::select_(rownames_to_column(pData(cds)), "rowname")
+
+Updated code:
+
+    rownames_to_column(pData(cds)) %>%
+        dplyr::select(rowname)
+
+
+3. dplyr do() environment variable bug
+
+Original code:
+
+    cds[, rowname]
+
+Updated code:
+
+    cds[, .$rowname]
+
+
+4. BiocGenerics parallel functions removed
+
+Original code:
+
+    clusterApply(cl = cl, x = splitRows(x, length(cl)), ...)
+
+Updated code:
+
+    parallel::clusterApply(cl = cl, x = splitRows(x, length(cl)), ...)
+
+Original code:
+
+    clusterCall(cl, function(pkgs) {...})
+
+Updated code:
+
+    parallel::clusterCall(cl, function(pkgs) {...})
+
+Original code:
+
+    parRapply
+    parCapply
+
+Updated code:
+
+    parallel::parRapply
+    parallel::parCapply
+
+
+Remove from NAMESPACE:
+
+    importFrom(BiocGenerics,clusterApply)
+    importFrom(BiocGenerics,clusterCall)
+    importFrom(BiocGenerics,parCapply)
+    importFrom(BiocGenerics,parRapply)
+
+
+5. igraph traversal API change
+
+Monocle2 uses the old igraph traversal API.
+
+Original code:
+
+    graph.dfs(dp_mst, root = root_cell, neimode = "all",
+              unreachable = FALSE, father = TRUE)
+
+Updated code:
+
+    igraph::dfs(dp_mst, root = root_cell, mode = "all",
+                unreachable = FALSE, parent = TRUE)
+
+However, because several other igraph functions used internally by Monocle2
+have also changed behavior in newer releases, the recommended igraph version
+remains:
+
+    igraph 1.2.11
+
+
+6. class() logical vector bug (projection)
+
+Original code:
+
+    if(class(projection) != 'matrix')
+        projection <- as.matrix(projection)
+
+Updated code:
+
+    if(!is.matrix(projection))
+        projection <- as.matrix(projection)
+
+
+7. tidyselect / rlang sym() compatibility bug
+
+Original code:
+
+    select(prin_graph_dim_1 = !!sym(x),
+           prin_graph_dim_2 = !!sym(y))
+
+Updated code:
+
+    df <- as.data.frame(Matrix::t(reduced_dim_coords))
+
+    df <- data.frame(
+        prin_graph_dim_1 = df[,x],
+        prin_graph_dim_2 = df[,y]
+    )
+
+
+8. branchTest progenitor_method bug
+
+Original code:
+
+    if (progenitor_method == "duplicate") {
+
+Updated code:
+
+    if (progenitor_method[1] == "duplicate") {
+
+
+9. newCellDataSet class(cellData) bug
+
+Original code:
+
+    if (class(cellData) != "matrix" && isSparseMatrix(cellData) == FALSE)
+
+Updated code:
+
+    if (!is.matrix(cellData) && !isSparseMatrix(cellData))
+
+
+10. Sparse matrix detection update
+
+Original implementation:
+
+    isSparseMatrix <- function(x){
+        class(x) %in% c("dgCMatrix", "dgTMatrix")
+    }
+
+Updated implementation:
+
+    isSparseMatrix <- function(x){
+        inherits(x, "sparseMatrix")
+    }
+
+
+Tested Environment
+------------------
+
+This patched version was tested under the following environment:
+
+    R              4.3
+    monocle        2.9.0 (patched)
+    Matrix         1.6-5
+    Biobase        2.62.0
+    VGAM           1.1-14
+    DDRTree        0.1.5
+    igraph         1.2.11
+    ggplot2        4.0.2
+    dplyr          1.2.0
+
+
+Additional packages used during testing:
+
+    plyr
+    cluster
+    fastICA
+    irlba
+    matrixStats
+    densityClust
+    Rtsne
+    reshape2
+    limma
+    tibble
+    qlcMatrix
+    pheatmap
+    stringr
+    proxy
+    slam
+    viridis
+    RANN
+    Rcpp
+
+
+Installation
+------------
+
+After applying the patches:
+
+    R CMD INSTALL .
+
+Restart R:
+
+    .rs.restartR()
+    library(monocle)
+
+
+Supported Functions After Patch
+-------------------------------
+
+The patched version supports the full Monocle2 workflow:
+
+    DDRTree
+    orderCells
+    plot_cell_trajectory
+    BEAM
+    branch heatmap
+    differentialGeneTest
+
+
+Recommended Distribution
+------------------------
+
+It is recommended to maintain a patched package directory:
+
+    monocle_R43_fixed
+
+Future installations can be done using:
+
+    R CMD INSTALL monocle_R43_fixed
