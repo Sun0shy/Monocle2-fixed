@@ -31,16 +31,10 @@ install.packages("igraph_1.2.11.tar.gz", repos = NULL, type = "source")
 
 Download the patched source and install:
 
-```r
-install.packages("monocle-release-master-fixed.zip",
-                 repos = NULL,
-                 type = "source")
-```
-
-or from terminal:
-
 ```bash
-R CMD INSTALL monocle-release-master-fixed.zip
+unzip monocle-release-master-fixed.zip
+cd monocle-release-master-fixed
+R CMD INSTALL .
 ```
 
 ---
